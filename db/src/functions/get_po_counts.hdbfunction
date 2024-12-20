@@ -1,0 +1,34 @@
+FUNCTION "get_po_counts"( im_fdate DATE )
+          RETURNS TABLE (EMAIL NVARCHAR(255),
+                         FULLNAME NVARCHAR(255),
+                         CREATE_CNT INTEGER,
+                         CHANGE_CNT INTEGER,
+                         COMBINED_CNT INTEGER)    
+    LANGUAGE SQLSCRIPT
+    SQL SECURITY INVOKER AS
+BEGIN
+
+    
+PO_CREATE_CNT = SELECT COUNT(*) AS CREATE_CNT, "CREATEDBY" AS EID
+FROM "OPENSAP_PURCHASEORDER_HEADERS" WHERE ID IN ( SELECT "POHEADER_ID"
+                                                    FROM "OPENSAP_PURCHASEORDER_ITEMS"
+                                                    WHERE "PRODUCT_PRODUCTID" IS NOT NULL)
+                                     AND MONTH("CREATEDAT") = MONTH(:im_fdate) GROUP BY  "CREATEDBY";
+
+PO_CHANGE_CNT = SELECT COUNT(*) AS CHANGE_CNT, "MODIFIEDBY" AS EID
+FROM "OPENSAP_PURCHASEORDER_HEADERS"  WHERE ID IN ( SELECT "POHEADER_ID"
+                                                    FROM "OPENSAP_PURCHASEORDER_ITEMS"
+                                                    WHERE "PRODUCT_PRODUCTID" IS NOT NULL)
+                                      AND MONTH("CREATEDAT") = MONTH(:im_fdate) GROUP BY "MODIFIEDBY";
+
+EMP_PO_COMBINED_CNT = 
+        SELECT EMAIL, "get_full_name"( "NAMEFIRST", "NAMEMIDDLE", "NAMELAST" ) AS FULLNAME, CRCNT.CREATE_CNT, CHCNT.CHANGE_CNT, CRCNT.CREATE_CNT + CHCNT.CHANGE_CNT AS COMBINED_CNT
+                                                    FROM "OPENSAP_MD_EMPLOYEES" AS EMP
+                                                    LEFT OUTER JOIN :PO_CREATE_CNT AS CRCNT ON EMP.EMAIL = CRCNT.EID
+                                                    LEFT OUTER JOIN :PO_CHANGE_CNT AS CHCNT ON EMP.EMAIL = CHCNT.EID
+                                                        ORDER BY COMBINED_CNT DESC;
+
+RETURN SELECT * FROM :EMP_PO_COMBINED_CNT;
+
+
+END;
